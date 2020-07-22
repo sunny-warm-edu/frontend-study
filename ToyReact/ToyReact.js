@@ -1,3 +1,4 @@
+//ElementWrapper TextWrapper的意义、作用？
 class ElementWrapper {
   constructor(type){
     this.root = document.createElement(type);
@@ -27,6 +28,7 @@ class TextWrapper{
   }
 }
 
+//Component的意义、作用？
 export class Component{
   constructor(){
     this.children = [];
@@ -48,6 +50,7 @@ export class Component{
 }
 
 export let ToyReact = {
+  //createElement在哪些场景下会被调用？
   createElement(type, attributes, ...children){
     console.log('@@@ToyReact.createElement # type, attributes, children:', type, attributes, children);
 
@@ -96,6 +99,7 @@ export let ToyReact = {
     return element;
   },
 
+  //renderDom在什么场景下被调用？为什么这么设计？
   renderDom(vdom, element){
     console.log('ToyReact.renderDom # vdom:', vdom);
     vdom.mountTo(element);

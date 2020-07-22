@@ -1,6 +1,8 @@
 module.exports = {
     entry: {
-        main: './main.js'
+        // main: './main.js'
+        // main: './day1/main.js'
+        main: './day2/main.js'
     },
     module: {
         rules: [
