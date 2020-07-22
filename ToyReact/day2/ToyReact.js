@@ -4,8 +4,9 @@ class Node{
 }
 
 class Wrapper extends Node {
-  mountTo(parent){
-    this.root && typeof parent.appendChild === 'function' && parent.appendChild(this.root);
+  mountTo(range){
+    //parent.appendChild(this.root);
+    range.insertNode(this.root);
   }
 }
 
@@ -17,11 +18,26 @@ class ElementWrapper extends Wrapper{
     this.root = document.createElement(type);
   }
   setAttribute(name, value){
-    this.root && this.root.setAttribute && this.root.setAttribute(name, value);
+    if(name.match(/^on([\s\S]+)$/)){
+      const eventName = RegExp.$1.replace(/^[\s\S]/, firstChar => firstChar.toLowerCase());
+      this.root.addEventListener(eventName, value);
+    } else {
+      if(name === 'className'){
+        name = 'class';
+      }
+      this.root.setAttribute(name, value);
+    }
   }
   appendChild(vchild){
-    console.log(' ### appendChild # this.root, vchild', this.root, vchild);
-    this.root && vchild && vchild.mountTo && vchild.mountTo(this.root)
+    let range = document.createRange();
+    if (this.root.children.length) {
+      range.setStartAfter(this.root.lastChild);
+      range.setEndAfter(this.root.lastChild);
+    } else {
+      range.setStart(this.root, 0);
+      range.setEnd(this.root, 0);
+    }
+    vchild.mountTo(range);
   }
 }
 class TextWrapper extends Wrapper{
@@ -37,6 +53,7 @@ export class Component extends Node{
     super();
     this.children = [];//把自定义组件包裹的虚实dom节点记录在this.children中，留给render()中处理（ToyReact使用方也可以选择不处理children，或者在任意需要的html节点位置插入children）
     this.props = {};
+    this.state = {};
   }
 
   appendChild(child){
@@ -48,9 +65,39 @@ export class Component extends Node{
     this.props[name] = value;
   }
 
-  mountTo(parent){
-    const vdom = this.render();
-    vdom.mountTo(parent)
+  mountTo(range) {
+    this.range = range;
+    this.update();
+  }
+
+  update() {
+    let placeholder = document.createComment("placholder");
+    let range = document.createRange();
+    range.setStart(this.range.endContainer, this.range.endOffset);
+    range.setEnd(this.range.endContainer, this.range.endOffset);
+    range.insertNode(placeholder);
+    this.range.deleteContents();
+    let vdom = this.render();
+    vdom.mountTo(this.range);
+  }
+
+  setState(state){
+    if(Object.keys(state).length < 1){
+      return;
+    }
+
+    const merge = (obj1, obj2) => {
+      for(let key in obj2){
+        if(typeof obj2[key] === 'object' && typeof obj1[key] === 'object'){
+          merge(obj1[key], obj2[key])
+        } else {
+          obj1[key] = obj2[key];
+        }
+      }
+    }
+    merge(this.state, state);
+
+    this.update();
   }
 }
 
@@ -63,8 +110,6 @@ export let ToyReact = {
     后根据外层标签来调用createElement
   */
   createElement(type, attributes, ...children){
-    console.log('--- arguments:', arguments)
-    // console.log(type, attributes, children);
     let element;
     if(typeof type === 'string'){
       //原生Dom节点的创建
@@ -90,6 +135,10 @@ export let ToyReact = {
         if(typeof child === 'object' && child instanceof Array){ //递归处理自定义组件包裹的children
           insertChildren(child);
         } else {
+          if(child === null || child === void 0){
+            child = '';
+          }
+
           if( !(child instanceof Node) )//非自定义组件、非textNode、非原生dom的其他类型变量，则当作textNode处理
             child = String(child);
           if( typeof child === "string")
@@ -106,8 +155,16 @@ export let ToyReact = {
   },
 
   //renderDom在什么场景下被调用？为什么这么设计？
-  renderDom(vdom, element){
-    console.log('@@ ToyReact.renderDom # vdom:', vdom);
-    vdom.mountTo(element);
-  }
+  renderDom(vdom, element) {
+    let range = document.createRange();
+    if (element.children.length) {
+      range.setStartAfter(element.lastChild);
+      range.setEndAfter(element.lastChild);
+    } else {
+      range.setStart(element, 0);
+      range.setEnd(element, 0);
+    }
+
+    vdom.mountTo(range);
+  },
 }

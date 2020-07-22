@@ -17,11 +17,10 @@ class ElementWrapper extends Wrapper{
     this.root = document.createElement(type);
   }
   setAttribute(name, value){
-    this.root.setAttribute(name, value);
+    this.root && this.root.setAttribute && this.root.setAttribute(name, value);
   }
   appendChild(vchild){
-    console.log(' ### appendChild # this.root, vchild', this.root, vchild);
-    vchild && vchild.mountTo && vchild.mountTo(this.root)
+    this.root && vchild && vchild.mountTo && vchild.mountTo(this.root)
   }
 }
 class TextWrapper extends Wrapper{
@@ -63,8 +62,6 @@ export let ToyReact = {
     后根据外层标签来调用createElement
   */
   createElement(type, attributes, ...children){
-    console.log('--- arguments:', arguments)
-    // console.log(type, attributes, children);
     let element;
     if(typeof type === 'string'){
       //原生Dom节点的创建
@@ -72,6 +69,9 @@ export let ToyReact = {
 
       //attribute的设置
       for(let attrName in attributes){
+        if(attrName === 'className'){
+          attrName = 'class';
+        }
         element.setAttribute(attrName, attributes[attrName]);
       }
     } else {
@@ -90,6 +90,10 @@ export let ToyReact = {
         if(typeof child === 'object' && child instanceof Array){ //递归处理自定义组件包裹的children
           insertChildren(child);
         } else {
+          if(child === null || child === undefined){
+            child = '';
+          }
+
           if( !(child instanceof Node) )//非自定义组件、非textNode、非原生dom的其他类型变量，则当作textNode处理
             child = String(child);
           if( typeof child === "string")
@@ -107,7 +111,6 @@ export let ToyReact = {
 
   //renderDom在什么场景下被调用？为什么这么设计？
   renderDom(vdom, element){
-    console.log('@@ ToyReact.renderDom # vdom:', vdom);
     vdom.mountTo(element);
   }
 }
