@@ -4,38 +4,83 @@ class Node{
 }
 
 class Wrapper extends Node {
-  mountTo(parent){
-    this.root && typeof parent.appendChild === 'function' && parent.appendChild(this.root);
+  mountTo(range){
+    range.deleteContents();
+    range.insertNode(this.root);
+    this.range = range;
   }
 }
 
-//ElementWrapper TextWrapper的意义、作用？统一原生html标签对应的dom类element和自定义组件类的方法接口
-//为什么用extends并且未调用super()时，construtor中_this为undefinded？用extends时，编译出_this的作用是什么？
 class ElementWrapper extends Wrapper{
   constructor(type){
     super();
-    this.root = document.createElement(type);
+    //this.root = document.createElement(type);
+    this.type = type;
+    this.props = Object.create(null);
+    this.children = [];
   }
   setAttribute(name, value){
-    this.root && this.root.setAttribute && this.root.setAttribute(name, value);
+    this.props[name] = value;
   }
+
   appendChild(vchild){
-    this.root && vchild && vchild.mountTo && vchild.mountTo(this.root)
+    this.children.push(vchild);
+  }
+
+  mountTo(range){
+    range.deleteContents();
+    let element = document.createElement(this.type);
+
+    for(let name in this.props){
+      const value = this.props[name];
+      if(name.match(/^on([\s\S]+)$/)){
+        const eventName = RegExp.$1.replace(/^[\s\S]/, firstChar => firstChar.toLowerCase());
+        element.addEventListener(eventName, value);
+      } else {
+        if(name === 'className'){
+          name = 'class';
+        }
+        element.setAttribute(name, value);
+      }
+    }
+
+    for(let child of this.children){
+      let range = document.createRange();
+      if (element.children.length) {
+        range.setStartAfter(element.lastChild);
+        range.setEndAfter(element.lastChild);
+      } else {
+        range.setStart(element, 0);
+        range.setEnd(element, 0);
+      }
+      child.mountTo(range);
+    }
+    
+    range.insertNode(element);
+
+    this.range = range;
   }
 }
 class TextWrapper extends Wrapper{
   constructor(content){
     super();
     this.root = document.createTextNode(content);
+    this.type = "#text";
+    this.children = [];
+    this.props = Object.create(null);
   }
 }
 
-//Component的意义、作用？自定义组件继承使用，封装render和其他生命周期函数
 export class Component extends Node{
   constructor(){
     super();
     this.children = [];//把自定义组件包裹的虚实dom节点记录在this.children中，留给render()中处理（ToyReact使用方也可以选择不处理children，或者在任意需要的html节点位置插入children）
-    this.props = {};
+    this.props = Object.create(null);
+    this.state = Object.create(null);
+  }
+
+  get type(){
+    return this.constructor.name;
   }
 
   appendChild(child){
@@ -47,9 +92,85 @@ export class Component extends Node{
     this.props[name] = value;
   }
 
-  mountTo(parent){
-    const vdom = this.render();
-    vdom.mountTo(parent)
+  mountTo(range) {
+    this.range = range;
+    this.update();
+  }
+
+  update() {
+    let vdom = this.render();
+
+    if(this.vdom){
+      const isSameNode = (node1, node2) => {
+        if(node1 === node2) return true;
+        if(!node1 || !node2) return false;
+
+        if(node1.type !== node2.type) return false;
+        if(Object.keys(node1.props).length !== Object.keys(node2.props).length)
+          return false;
+        for(let name in node1.props){
+          if(typeof node1.props[name] === 'function'
+            && typeof node2.props[name] === 'function'
+            && node1.props[name].toString() === node2.props[name].toString())
+            continue;
+          // if(typeof node1.props[name] === 'object'
+          //   && typeof node2.props[name] === 'object'
+          //   && JSON.stringify(node1.props[name]) === JSON.stringify(node2.props[name]))
+          //   continue;
+
+          if(node1.props[name] !== node2.props[name])
+            return false;
+        }
+
+        return true;
+      }
+      const isSameTree = (node1, node2) => {
+        if(!isSameNode(node1, node2)) return false;
+        if(node1.children.length !== node2.children.length)
+          return false;
+        for(let i = 0; i < node1.children.length; i ++){
+          if(!isSameTree(node1.children[i], node2.children[i]))
+            return false;
+        }
+        return true;
+      }
+      const replace = (newTree, oldTree) => {
+        if(isSameTree(newTree, oldTree))
+          return;
+        if(!isSameNode(newTree, oldTree)){
+          newTree.mountTo(oldTree.range);
+        } else {
+          for(let i = 0; i < newTree.children.length; i ++){
+            replace(newTree.children[i], oldTree.children[i]);
+          }
+        }
+      }
+
+      replace(vdom, this.vdom);
+    } else {
+      vdom.mountTo(this.range);
+    }
+    
+    this.vdom = vdom;
+  }
+
+  setState(state){
+    if(Object.keys(state).length < 1){
+      return;
+    }
+
+    const merge = (obj1, obj2) => {
+      for(let key in obj2){
+        if(typeof obj2[key] === 'object' && typeof obj1[key] === 'object'){
+          merge(obj1[key], obj2[key])
+        } else {
+          obj1[key] = obj2[key];
+        }
+      }
+    }
+    merge(this.state, state);
+
+    this.update();
   }
 }
 
@@ -64,14 +185,9 @@ export let ToyReact = {
   createElement(type, attributes, ...children){
     let element;
     if(typeof type === 'string'){
-      //原生Dom节点的创建
       element = new ElementWrapper(type);
 
-      //attribute的设置
       for(let attrName in attributes){
-        if(attrName === 'className'){
-          attrName = 'class';
-        }
         element.setAttribute(attrName, attributes[attrName]);
       }
     } else {
@@ -90,7 +206,7 @@ export let ToyReact = {
         if(typeof child === 'object' && child instanceof Array){ //递归处理自定义组件包裹的children
           insertChildren(child);
         } else {
-          if(child === null || child === undefined){
+          if(child === null || child === void 0){
             child = '';
           }
 
@@ -110,7 +226,16 @@ export let ToyReact = {
   },
 
   //renderDom在什么场景下被调用？为什么这么设计？
-  renderDom(vdom, element){
-    vdom.mountTo(element);
-  }
+  renderDom(vdom, element) {
+    let range = document.createRange();
+    if (element.children.length) {
+      range.setStartAfter(element.lastChild);
+      range.setEndAfter(element.lastChild);
+    } else {
+      range.setStart(element, 0);
+      range.setEnd(element, 0);
+    }
+
+    vdom.mountTo(range);
+  },
 }
